@@ -1,0 +1,64 @@
+version: "3.9"
+
+services:
+  db:
+    container_name: ${APP_NAME}_DB
+    env_file: .env
+    image: postgres:alpine
+    volumes:
+      - ./data/db:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    ports:
+      - 5432:${POSTGRES_PORT}
+    networks:
+      - vcom-network
+  web:
+    container_name: ${APP_NAME}_WEB
+    env_file: .env
+    build:
+      context: .
+      dockerfile: docker_files/Dockerfile
+    command: >
+      sh -c "python manage.py makemigrations &&
+             python manage.py migrate &&
+             python manage.py runserver 0.0.0.0:8000
+      "
+    volumes:
+      - .:/code
+    ports:
+      - 8000:${EXPOSE_PORT}
+    environment:
+      - POSTGRES_NAME=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    depends_on:
+      - "db"
+    networks:
+      - vcom-network
+  redis:
+      image: redis:alpine
+      ports:
+        - 6379:${REDIS_PORT}
+      networks:
+        - vcom-network
+  celery:
+    env_file: .env
+    restart: always
+    build:
+      context: .
+      dockerfile: "docker_files/Dockerfile"
+    command: celery -A video_compressor.tasks worker -l info
+    volumes:
+      - .:/code
+    depends_on:
+      - redis
+      - db
+      - web
+    networks:
+      - vcom-network
+
+networks:
+   vcom-network:
